@@ -167,7 +167,7 @@ mod coordinator {
             }
 
             let ptr_shm = shm_mutex.get_cptr_mut();
-            let mut shared_futex = SharedFutex::new(ptr_shm);
+            let shared_futex = SharedFutex::new(ptr_shm);
 
             Coordinator {
                 mem_path: mem_path.to_string(),
