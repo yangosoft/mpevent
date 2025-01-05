@@ -1,6 +1,4 @@
-
-
 #[derive(Debug)]
-pub(crate) struct Subscriber {
+pub struct Subscriber {
     id: u64,
 }

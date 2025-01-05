@@ -1,5 +1,4 @@
-
 #[derive(Debug)]
-pub(crate) struct Event {
+pub struct Event {
     id: u64,
 }
