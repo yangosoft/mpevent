@@ -161,6 +161,14 @@ impl Coordinator {
         Ok(())
     }
 
+    pub fn get_number_of_participants(&self) -> u64 {
+        unsafe { (*self.directory).last_participant_id }
+    }
+
+    pub fn get_number_of_events(&self) -> u64 {
+        unsafe { (*self.directory).last_event_id }
+    }
+
     pub fn get_path(&self) -> String {
         self.mem_path.clone()
     }
@@ -202,13 +210,13 @@ impl Coordinator {
         // Prepend coordinator name to event name
         let name = self.mem_path.to_string() + "_" + name;
 
+        let mut exists = false;
         // Check if event already exists
         for i in 0..max_id {
             let e = unsafe { (*self.directory).events[i as usize] };
             let e_name = e.get_name();
             if e_name == name {
-                self.mutex.unlock(0);
-                return Err(String::from("Event already exists"));
+                exists = true;
             }
         }
 
@@ -218,9 +226,10 @@ impl Coordinator {
             let new_id = (*self.directory).last_event_id;
             event.set_id(new_id);
             event.set_name(name.as_str());
-
-            (*self.directory).events[new_id as usize] = event;
-            (*self.directory).last_event_id += 1;
+            if !exists {
+                (*self.directory).events[new_id as usize] = event;
+                (*self.directory).last_event_id += 1;
+            }
         }
         self.mutex.unlock(0);
         let waitable = event.get_waitable();
@@ -242,6 +251,7 @@ impl Coordinator {
     }
 }
 
+use core::num;
 #[cfg(test)]
 use std::ffi::CString;
 
@@ -252,6 +262,8 @@ fn test_shared_memory_write_read() {
 
     let ret = coordinator.add_participant("test_participant");
     assert!(ret.is_ok());
+    let num_participants = coordinator2.get_number_of_participants();
+    assert_eq!(num_participants, 1);
     let s = coordinator2.get_participant(0).unwrap();
     assert_eq!(s.id, 0);
 
@@ -277,10 +289,16 @@ fn test_events() {
 
     let ret = coordinator.add_event("test_event");
     assert!(ret.is_ok());
+    let num_events = coordinator2.get_number_of_events();
+    assert_eq!(num_events, 1);
     let ret = coordinator2.add_event("test_event");
-    assert!(ret.is_err());
+    assert!(ret.is_ok());
+    let num_events = coordinator2.get_number_of_events();
+    assert_eq!(num_events, 1);
     let ret = coordinator2.add_event("test_event");
-    assert!(ret.is_err());
+    assert!(ret.is_ok());
+    let num_events = coordinator2.get_number_of_events();
+    assert_eq!(num_events, 1);
 
     let ret = coordinator2.close(false);
     assert!(ret.is_ok());
