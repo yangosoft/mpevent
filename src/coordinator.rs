@@ -3,22 +3,22 @@ use rufutex::rufutex::SharedFutex;
 use rushm::posixaccessor;
 
 use crate::MAX_EVENTS;
-use crate::MAX_SUBSCRIBERS;
-use crate::MAX_SUBSCRIBER_NAME_SIZE;
+use crate::MAX_PARTICIPANTS;
+use crate::MAX_PARTICIPANT_NAME_SIZE;
 
 // C representation
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
 pub struct Participant {
     id: u64,
-    name: [u8; MAX_SUBSCRIBER_NAME_SIZE],
+    name: [u8; MAX_PARTICIPANT_NAME_SIZE],
 }
 
 impl Participant {
     pub fn new() -> Self {
         Participant {
             id: 0,
-            name: [0; MAX_SUBSCRIBER_NAME_SIZE],
+            name: [0; MAX_PARTICIPANT_NAME_SIZE],
         }
     }
 
@@ -35,7 +35,7 @@ impl Participant {
 struct Directory {
     last_participant_id: u64,
     last_event_id: u64,
-    participants: [Participant; MAX_SUBSCRIBERS],
+    participants: [Participant; MAX_PARTICIPANTS],
     events: [Event; MAX_EVENTS],
 }
 
@@ -46,8 +46,8 @@ impl Directory {
             last_event_id: 0,
             participants: [Participant {
                 id: 0,
-                name: [0; MAX_SUBSCRIBER_NAME_SIZE],
-            }; MAX_SUBSCRIBERS],
+                name: [0; MAX_PARTICIPANT_NAME_SIZE],
+            }; MAX_PARTICIPANTS],
             events: [Event::new(); MAX_EVENTS],
         }
     }
@@ -178,13 +178,17 @@ impl Coordinator {
         self.mutex.lock();
 
         let max_id = unsafe { (*self.directory).last_participant_id };
+        if max_id >= MAX_PARTICIPANTS as u64 {
+            self.mutex.unlock(1);
+            return Err(String::from("Max number of participants reached"));
+        }
 
         // Check if participant already exists
         for i in 0..max_id {
             let p = unsafe { (*self.directory).participants[i as usize] };
             let p_name = p.get_name();
             if p_name == name {
-                self.mutex.unlock(0);
+                self.mutex.unlock(1);
                 return Err(String::from("Participant already exists"));
             }
         }
@@ -198,7 +202,7 @@ impl Coordinator {
             (*self.directory).participants[participant.id as usize] = participant;
             (*self.directory).last_participant_id += 1;
         }
-        self.mutex.unlock(0);
+        self.mutex.unlock(1);
         Ok(())
     }
 
@@ -206,6 +210,11 @@ impl Coordinator {
         self.mutex.lock();
 
         let max_id = unsafe { (*self.directory).last_event_id };
+
+        if max_id >= MAX_EVENTS as u64 {
+            self.mutex.unlock(1);
+            return Err(String::from("Max number of events reached"));
+        }
 
         // Prepend coordinator name to event name
         let name = self.mem_path.to_string() + "_" + name;
@@ -225,13 +234,18 @@ impl Coordinator {
         unsafe {
             let new_id = (*self.directory).last_event_id;
             event.set_id(new_id);
-            event.set_name(name.as_str());
+            let ret = event.set_name(name.as_str());
+            if ret.is_err() {
+                self.mutex.unlock(1);
+                return Err(String::from("Error setting event name"));
+            }
+
             if !exists {
                 (*self.directory).events[new_id as usize] = event;
                 (*self.directory).last_event_id += 1;
             }
         }
-        self.mutex.unlock(0);
+        self.mutex.unlock(1);
         let waitable = event.get_waitable();
         if waitable.is_none() {
             return Err(String::from("Error creating waitable"));
@@ -240,7 +254,7 @@ impl Coordinator {
     }
 
     pub fn get_participant(&self, id: u64) -> Option<Participant> {
-        if id > MAX_SUBSCRIBERS as u64 {
+        if id > MAX_PARTICIPANTS as u64 {
             return None;
         }
 

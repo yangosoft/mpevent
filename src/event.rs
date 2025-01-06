@@ -33,11 +33,15 @@ impl Event {
         self.id = id;
     }
 
-    pub fn set_name(&mut self, name: &str) {
+    pub fn set_name(&mut self, name: &str) -> Result<(), &'static str> {
+        if name.len() > MAX_EVENT_NAME_SIZE {
+            return Err("Name too long");
+        }
         let bytes = name.as_bytes();
         for (i, byte) in bytes.iter().enumerate() {
             self.name[i] = *byte;
         }
+        Ok(())
     }
 
     pub fn get_waitable(&self) -> Option<SharedFutex> {
@@ -60,8 +64,6 @@ impl Event {
 }
 
 #[cfg(test)]
-use std::ffi::CString;
-
 #[test]
 fn test_event() {
     let mut event = Event::new();
@@ -71,7 +73,8 @@ fn test_event() {
     event.set_id(42);
     assert_eq!(event.get_id(), 42);
 
-    event.set_name("test_event");
+    let ret = event.set_name("test_event");
+    assert!(ret.is_ok());
     assert_eq!(event.get_name(), "test_event");
 
     let shared_futex = event.get_waitable();
@@ -91,7 +94,8 @@ fn test_events() {
     event.set_id(42);
     assert_eq!(event.get_id(), 42);
 
-    event.set_name("test_event2");
+    let ret = event.set_name("test_event2");
+    assert!(ret.is_ok());
     assert_eq!(event.get_name(), "test_event2");
 
     let shared_futex = event.get_waitable();
@@ -108,7 +112,8 @@ fn test_events() {
         event.set_id(42);
         assert_eq!(event.get_id(), 42);
 
-        event.set_name("test_event2");
+        let ret = event.set_name("test_event2");
+        assert!(ret.is_ok());
         assert_eq!(event.get_name(), "test_event2");
 
         let shared_futex2 = event.get_waitable();
