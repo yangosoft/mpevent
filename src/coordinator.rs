@@ -1,22 +1,22 @@
+use crate::event::Event;
 use rufutex::rufutex::SharedFutex;
 use rushm::posixaccessor;
 
-const MAX_SUBSCRIBERS: usize = 64;
-const MAX_EVENT_NAME_SIZE: usize = 64;
-const MAX_EVENTS: usize = 64;
-const MAX_SUBSCRIBER_NAME_SIZE: usize = 64;
+use crate::MAX_EVENTS;
+use crate::MAX_SUBSCRIBERS;
+use crate::MAX_SUBSCRIBER_NAME_SIZE;
 
 // C representation
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
-pub struct Subscriber {
+pub struct Participant {
     id: u64,
     name: [u8; MAX_SUBSCRIBER_NAME_SIZE],
 }
 
-impl Subscriber {
+impl Participant {
     pub fn new() -> Self {
-        Subscriber {
+        Participant {
             id: 0,
             name: [0; MAX_SUBSCRIBER_NAME_SIZE],
         }
@@ -31,50 +31,24 @@ impl Subscriber {
 
 // C representation
 #[repr(C)]
-#[derive(Debug, Copy, Clone)]
-pub struct Event {
-    id: u64,
-    name: [u8; MAX_EVENT_NAME_SIZE],
-}
-
-impl Event {
-    pub fn new() -> Self {
-        Event {
-            id: 0,
-            name: [0; MAX_EVENT_NAME_SIZE],
-        }
-    }
-
-    pub fn get_name(&self) -> String {
-        let vname: Vec<u8> = self.name.iter().take_while(|&&c| c != 0).cloned().collect();
-        let name = String::from_utf8(vname).unwrap();
-        name
-    }
-}
-
-// C representation
-#[repr(C)]
 #[derive(Debug, Clone, Copy)]
 struct Directory {
-    last_subscriber_id: u64,
+    last_participant_id: u64,
     last_event_id: u64,
-    subscribers: [Subscriber; MAX_SUBSCRIBERS],
+    participants: [Participant; MAX_SUBSCRIBERS],
     events: [Event; MAX_EVENTS],
 }
 
 impl Directory {
     pub fn new() -> Self {
         Directory {
-            last_subscriber_id: 0,
+            last_participant_id: 0,
             last_event_id: 0,
-            subscribers: [Subscriber {
+            participants: [Participant {
                 id: 0,
                 name: [0; MAX_SUBSCRIBER_NAME_SIZE],
             }; MAX_SUBSCRIBERS],
-            events: [Event {
-                id: 0,
-                name: [0; MAX_EVENT_NAME_SIZE],
-            }; MAX_EVENTS],
+            events: [Event::new(); MAX_EVENTS],
         }
     }
 }
@@ -83,7 +57,6 @@ pub struct Coordinator {
     mem_path: String,
     directory: *mut Directory,
     shm: posixaccessor::POSIXShm<Directory>,
-    shm_mutex: posixaccessor::POSIXShm<i32>,
     mutex: rufutex::rufutex::SharedFutex,
 }
 
@@ -133,7 +106,6 @@ impl Coordinator {
                 mem_path.to_string(),
                 std::mem::size_of::<Directory>(),
             ),
-            shm_mutex,
             mutex: shared_futex,
         }
     }
@@ -172,7 +144,6 @@ impl Coordinator {
             mem_path: mem_path.to_string(),
             directory: ptr_data,
             shm: tmp_shm,
-            shm_mutex,
             mutex: shared_futex,
         }
     }
@@ -190,48 +161,83 @@ impl Coordinator {
         Ok(())
     }
 
-    pub fn add_subscriber(&mut self, name: &str) -> Result<(), String> {
-        let mut subscriber = Subscriber::new();
+    pub fn get_path(&self) -> String {
+        self.mem_path.clone()
+    }
+
+    pub fn add_participant(&mut self, name: &str) -> Result<(), String> {
+        let mut participant = Participant::new();
         self.mutex.lock();
 
+        let max_id = unsafe { (*self.directory).last_participant_id };
+
+        // Check if participant already exists
+        for i in 0..max_id {
+            let p = unsafe { (*self.directory).participants[i as usize] };
+            let p_name = p.get_name();
+            if p_name == name {
+                self.mutex.unlock(0);
+                return Err(String::from("Participant already exists"));
+            }
+        }
+
         unsafe {
-            (*self.directory).last_subscriber_id += 1;
-            subscriber.id = (*self.directory).last_subscriber_id;
+            participant.id = (*self.directory).last_participant_id;
             let name_bytes = name.as_bytes();
             for i in 0..name_bytes.len() {
-                subscriber.name[i] = name_bytes[i];
+                participant.name[i] = name_bytes[i];
             }
-            (*self.directory).subscribers[subscriber.id as usize] = subscriber;
+            (*self.directory).participants[participant.id as usize] = participant;
+            (*self.directory).last_participant_id += 1;
         }
         self.mutex.unlock(0);
         Ok(())
     }
 
-    pub fn add_event(&mut self, name: &str) -> Result<(), String> {
+    pub fn add_event(&mut self, name: &str) -> Result<SharedFutex, String> {
         self.mutex.lock();
+
+        let max_id = unsafe { (*self.directory).last_event_id };
+
+        // Prepend coordinator name to event name
+        let name = self.mem_path.to_string() + "_" + name;
+
+        // Check if event already exists
+        for i in 0..max_id {
+            let e = unsafe { (*self.directory).events[i as usize] };
+            let e_name = e.get_name();
+            if e_name == name {
+                self.mutex.unlock(0);
+                return Err(String::from("Event already exists"));
+            }
+        }
+
         let mut event = Event::new();
 
         unsafe {
+            let new_id = (*self.directory).last_event_id;
+            event.set_id(new_id);
+            event.set_name(name.as_str());
+
+            (*self.directory).events[new_id as usize] = event;
             (*self.directory).last_event_id += 1;
-            event.id = (*self.directory).last_event_id;
-            let name_bytes = name.as_bytes();
-            for i in 0..name_bytes.len() {
-                event.name[i] = name_bytes[i];
-            }
-            (*self.directory).events[event.id as usize] = event;
         }
         self.mutex.unlock(0);
-        Ok(())
+        let waitable = event.get_waitable();
+        if waitable.is_none() {
+            return Err(String::from("Error creating waitable"));
+        }
+        Ok(waitable.unwrap())
     }
 
-    pub fn get_subscriber(&self, id: u64) -> Option<Subscriber> {
+    pub fn get_participant(&self, id: u64) -> Option<Participant> {
         if id > MAX_SUBSCRIBERS as u64 {
             return None;
         }
 
         unsafe {
-            let subscriber = (*self.directory).subscribers[id as usize];
-            Some(subscriber)
+            let participant = (*self.directory).participants[id as usize];
+            Some(participant)
         }
     }
 }
@@ -244,19 +250,37 @@ fn test_shared_memory_write_read() {
     let mut coordinator = Coordinator::new("test_shared_memory_coordinator");
     let mut coordinator2 = Coordinator::open_existing("test_shared_memory_coordinator");
 
-    let ret = coordinator.add_subscriber("test_subscriber");
+    let ret = coordinator.add_participant("test_participant");
     assert!(ret.is_ok());
-    let s = coordinator2.get_subscriber(1).unwrap();
-    assert_eq!(s.id, 1);
+    let s = coordinator2.get_participant(0).unwrap();
+    assert_eq!(s.id, 0);
 
     let vname: Vec<u8> = s.name.iter().take_while(|&&c| c != 0).cloned().collect();
     let name = CString::new(vname.to_vec()).unwrap();
-    assert_eq!(name.to_str().unwrap(), "test_subscriber");
+    assert_eq!(name.to_str().unwrap(), "test_participant");
 
-    let s = coordinator.get_subscriber(1).unwrap();
-    assert_eq!(s.id, 1);
+    let s = coordinator.get_participant(0).unwrap();
+    assert_eq!(s.id, 0);
     let name = s.get_name();
-    assert_eq!(name, "test_subscriber");
+    assert_eq!(name, "test_participant");
+
+    let ret = coordinator2.close(false);
+    assert!(ret.is_ok());
+    let _ret = coordinator.close(true);
+    // Dont check for error, since the shared memory is already unlinked
+}
+
+#[test]
+fn test_events() {
+    let mut coordinator = Coordinator::new("test_shared_memory_coordinator");
+    let mut coordinator2 = Coordinator::open_existing("test_shared_memory_coordinator");
+
+    let ret = coordinator.add_event("test_event");
+    assert!(ret.is_ok());
+    let ret = coordinator2.add_event("test_event");
+    assert!(ret.is_err());
+    let ret = coordinator2.add_event("test_event");
+    assert!(ret.is_err());
 
     let ret = coordinator2.close(false);
     assert!(ret.is_ok());

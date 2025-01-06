@@ -3,6 +3,19 @@ name = "mpevent"
 version = "0.1.0"
 edition = "2021"
 
+
+[lib]
+name = "mpevent"
+path = "src/lib.rs"
+
+[[example]]
+name = "mpevent-notifier"
+path = "examples/mpevent-notifier.rs"
+
+[[example]]
+name = "mpevent-waiter"
+path = "examples/mpevent-waiter.rs"
+
 [dependencies]
 rushm = "0.2.1"
-rufutex = "0.1.0"
+rufutex = "0.2.0"
