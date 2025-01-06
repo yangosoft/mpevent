@@ -20,6 +20,7 @@ fn main() {
     });
 
     waitable.wait(0);
+    waitable.set_futex_value(0);
     println!("Event received");
     handle.join().unwrap();
     let _ = coordinator.close(true);

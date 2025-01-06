@@ -88,6 +88,10 @@ impl Subscriber {
 
         Ok(())
     }
+
+    pub fn close(&mut self) -> Result<(), String> {
+        self.coordinator.close(true)
+    }
 }
 
 #[cfg(test)]
@@ -116,4 +120,5 @@ fn test_subscriber() {
     let ret = subscriber.trigger_event("test_subscribers", u32::max_value());
     assert!(ret.is_ok());
     handle.join().unwrap();
+    let _ = subscriber.close();
 }
