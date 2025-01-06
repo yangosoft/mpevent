@@ -173,7 +173,7 @@ impl Coordinator {
         self.mem_path.clone()
     }
 
-    pub fn add_participant(&mut self, name: &str) -> Result<(), String> {
+    pub fn add_participant(&mut self, name: &str) -> Result<u64, String> {
         let mut participant = Participant::new();
         self.mutex.lock();
 
@@ -203,7 +203,7 @@ impl Coordinator {
             (*self.directory).last_participant_id += 1;
         }
         self.mutex.unlock(1);
-        Ok(())
+        Ok(participant.id)
     }
 
     pub fn add_event(&mut self, name: &str) -> Result<SharedFutex, String> {
@@ -265,7 +265,6 @@ impl Coordinator {
     }
 }
 
-use core::num;
 #[cfg(test)]
 use std::ffi::CString;
 
