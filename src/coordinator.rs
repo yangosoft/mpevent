@@ -5,6 +5,7 @@ use rushm::posixaccessor;
 use crate::MAX_EVENTS;
 use crate::MAX_PARTICIPANTS;
 use crate::MAX_PARTICIPANT_NAME_SIZE;
+use crate::{BUILTIN_EVENT_NEW_EVENT, BUILTIN_EVENT_NEW_PARTICIPANT};
 
 // C representation
 #[repr(C)]
@@ -150,6 +151,12 @@ impl Coordinator {
 
     pub fn close(&mut self, unlink: bool) -> Result<(), String> {
         let ret: Result<(), String>;
+
+        // Send fake events to possibly unblock waiters
+        // Notify with internal event
+        let _ = self.notify_builtin(BUILTIN_EVENT_NEW_PARTICIPANT);
+        let _ = self.notify_builtin(BUILTIN_EVENT_NEW_EVENT);
+
         unsafe {
             ret = self.shm.close(unlink);
         }
@@ -171,6 +178,24 @@ impl Coordinator {
 
     pub fn get_path(&self) -> String {
         self.mem_path.clone()
+    }
+
+    fn notify_builtin(&mut self, event_name: &str) -> Result<(), String> {
+        let event_name = self.mem_path.to_string() + "_" + event_name;
+        let mut event = Event::new();
+
+        let ret = event.set_name(event_name.as_str());
+        if ret.is_err() {
+            return Err(String::from("Error setting event name"));
+        }
+        event.set_id(0);
+
+        let waitable = event.get_waitable();
+        if waitable.is_none() {
+            return Err(String::from("Error creating waitable"));
+        }
+        waitable.unwrap().post_with_value(1, u32::max_value());
+        Ok(())
     }
 
     pub fn add_participant(&mut self, name: &str) -> Result<u64, String> {
@@ -203,6 +228,10 @@ impl Coordinator {
             (*self.directory).last_participant_id += 1;
         }
         self.mutex.unlock(1);
+
+        // Notify with internal event
+        let _ = self.notify_builtin(BUILTIN_EVENT_NEW_PARTICIPANT);
+
         Ok(participant.id)
     }
 
@@ -250,6 +279,9 @@ impl Coordinator {
         if waitable.is_none() {
             return Err(String::from("Error creating waitable"));
         }
+        // Notify with internal event
+        let _ = self.notify_builtin(BUILTIN_EVENT_NEW_EVENT);
+
         Ok(waitable.unwrap())
     }
 
