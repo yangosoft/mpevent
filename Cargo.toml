@@ -18,6 +18,6 @@ path = "examples/mpevent-waiter.rs"
 
 [dependencies]
 rushm = "0.2.1"
-#rufutex = "0.3.0"
-rufutex ={ path = "../rufutex"}
+rufutex = "0.4.0"
+#rufutex ={ path = "../rufutex"}
 libc = "0.2"

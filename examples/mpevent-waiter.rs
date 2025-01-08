@@ -4,49 +4,31 @@ use std::sync::Arc;
 use mpevent::coordinator::Coordinator;
 use mpevent::subscriber::Subscriber;
 
-fn wait_on_event(event_name: &str) {
+fn wait_on_event(participant_id: u64, event_name: &str) {
     let mut coordinator = Coordinator::new("example1");
     coordinator.add_participant("test_participant").unwrap();
-    let mut waitable = coordinator.add_event(event_name).unwrap();
+    let mut waitable = coordinator.add_event(participant_id, event_name).unwrap();
 
     waitable.wait(0);
     println!("Event {} received", event_name);
 }
 
 fn main() {
-    static MUST_RUN: AtomicBool = AtomicBool::new(true);
-
     let mut coordinator = Coordinator::new_clean("example1");
-    coordinator.add_participant("test_participant").unwrap();
+    let fixed_participant_id = coordinator.add_participant("test_participant").unwrap();
 
-    let mut waitable = coordinator.add_event("test_event").unwrap();
+    let mut waitable = coordinator
+        .add_event(fixed_participant_id, "test_event")
+        .unwrap();
 
-    let must_run = Arc::new(&MUST_RUN).clone();
-    // spawn a thread to wait on the futex
-    let handle = std::thread::spawn(move || {
-        wait_on_event("test_event");
-        must_run.store(false, std::sync::atomic::Ordering::SeqCst);
-    });
-
-    let must_run = Arc::new(&MUST_RUN).clone();
-    let handle2 = std::thread::spawn(move || {
-        let mut sub = Subscriber::new("test_subscriber", "example1");
-
-        while must_run.load(std::sync::atomic::Ordering::SeqCst) {
-            sub.wait_on_event(mpevent::BUILTIN_EVENT_NEW_PARTICIPANT)
-                .unwrap();
-            println!("Notification of new participant added");
-        }
-    });
-
-    let must_run = Arc::new(&MUST_RUN).clone();
     let handle3 = std::thread::spawn(move || {
         let mut sub = Subscriber::new("test_subscriber", "example1");
 
-        while must_run.load(std::sync::atomic::Ordering::SeqCst) {
-            sub.wait_on_event(mpevent::BUILTIN_EVENT_NEW_EVENT).unwrap();
-            println!("Notification of new event created");
-        }
+        sub.set_on_create_participant_callback(move |participant_id: u64| {
+            println!("New participant {} created and is not me!", participant_id);
+        });
+
+        sub.wait_on_new_participant().unwrap();
     });
 
     let wait_time = libc::timespec {
@@ -57,8 +39,7 @@ fn main() {
     waitable.wait_with_timeout(0, wait_time);
     waitable.set_futex_value(0);
     println!("Event received");
-    handle.join().unwrap();
-    handle2.join().unwrap();
+
     handle3.join().unwrap();
     let _ = coordinator.close(true);
 }

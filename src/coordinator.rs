@@ -40,6 +40,7 @@ struct Directory {
     last_event_id: u64,
     participants: [Participant; MAX_PARTICIPANTS],
     events: [Event; MAX_EVENTS],
+    events_owners: [u64; MAX_EVENTS],
 }
 
 impl Directory {
@@ -52,6 +53,7 @@ impl Directory {
                 name: [0; MAX_PARTICIPANT_NAME_SIZE],
             }; MAX_PARTICIPANTS],
             events: [Event::new(); MAX_EVENTS],
+            events_owners: [0; MAX_EVENTS],
         }
     }
 }
@@ -213,7 +215,7 @@ impl Coordinator {
         if ret.is_err() {
             return Err(String::from("Error setting event name"));
         }
-        event.set_id(0);
+        event.set_id(42);
 
         let waitable = event.get_waitable();
         if waitable.is_none() {
@@ -260,7 +262,7 @@ impl Coordinator {
         Ok(participant.id)
     }
 
-    pub fn add_event(&mut self, name: &str) -> Result<SharedFutex, String> {
+    pub fn add_event(&mut self, participant_id: u64, name: &str) -> Result<SharedFutex, String> {
         self.mutex.lock();
 
         let max_id = unsafe { (*self.directory).last_event_id };
@@ -296,6 +298,7 @@ impl Coordinator {
 
             if !exists {
                 (*self.directory).events[new_id as usize] = event;
+                (*self.directory).events_owners[new_id as usize] = participant_id as u64;
                 (*self.directory).last_event_id += 1;
             }
         }
@@ -305,7 +308,7 @@ impl Coordinator {
             return Err(String::from("Error creating waitable"));
         }
         // Notify with internal event
-        let _ = self.notify_builtin(BUILTIN_EVENT_NEW_EVENT);
+        let _ = self.notify_builtin(BUILTIN_EVENT_NEW_PARTICIPANT);
 
         Ok(waitable.unwrap())
     }
@@ -318,6 +321,39 @@ impl Coordinator {
         unsafe {
             let participant = (*self.directory).participants[id as usize];
             Some(participant)
+        }
+    }
+
+    pub fn get_last_event_id(&mut self) -> Option<u64> {
+        self.mutex.lock();
+        let current_id = unsafe { (*self.directory).last_event_id };
+        if current_id == 0 {
+            self.mutex.unlock(1);
+            return None;
+        }
+        self.mutex.unlock(1);
+        Some(current_id - 1)
+    }
+
+    pub fn get_last_participant_id(&mut self) -> Option<u64> {
+        self.mutex.lock();
+        let current_id = unsafe { (*self.directory).last_participant_id };
+        if current_id == 0 {
+            self.mutex.unlock(1);
+            return None;
+        }
+        self.mutex.unlock(1);
+        Some(current_id - 1)
+    }
+
+    pub fn get_participant_id_by_event_id(&self, event_id: u64) -> Option<u64> {
+        if event_id > MAX_EVENTS as u64 {
+            return None;
+        }
+
+        unsafe {
+            let participant_id = (*self.directory).events_owners[event_id as usize];
+            Some(participant_id)
         }
     }
 }

@@ -1,14 +1,16 @@
 use crate::coordinator::Coordinator;
 use std::collections::HashMap;
 
-pub struct Subscriber {
+pub struct Subscriber<'a> {
     id: u64,
     name: String,
     coordinator: Coordinator,
     map_events: HashMap<String, rufutex::rufutex::SharedFutex>,
+    on_new_event: Box<dyn FnMut(u64) + 'a>,
+    on_new_participant: Box<dyn FnMut(u64) + 'a>,
 }
 
-impl Subscriber {
+impl<'a> Subscriber<'a> {
     pub fn new(name: &str, mem_path: &str) -> Self {
         let mut coordinator = Coordinator::new(mem_path);
         let ret = coordinator.add_participant(name);
@@ -23,6 +25,8 @@ impl Subscriber {
             name: name.to_string(),
             coordinator,
             map_events,
+            on_new_event: Box::new(|_| {}),
+            on_new_participant: Box::new(|_| {}),
         }
     }
 
@@ -50,7 +54,7 @@ impl Subscriber {
             return Ok(self.map_events.get_mut(event_name).unwrap());
         }
 
-        let ret = self.coordinator.add_event(event_name);
+        let ret = self.coordinator.add_event(self.id, event_name);
         if ret.is_err() {
             return Err(String::from("Error adding event"));
         }
@@ -84,6 +88,11 @@ impl Subscriber {
 
         let event: &mut rufutex::rufutex::SharedFutex = ret.unwrap();
         event.wait(0);
+        let v = event.get_futex_value();
+        if v == 0 {
+            //It was spurious wake up
+            return Err(String::from("Error waiting on event"));
+        }
         event.set_futex_value(0);
 
         Ok(())
@@ -107,6 +116,78 @@ impl Subscriber {
         event.wait_with_timeout(0, timeout_spec);
         event.set_futex_value(0);
 
+        Ok(())
+    }
+
+    pub fn set_on_create_event_callback(&mut self, c: impl FnMut(u64) + 'a) {
+        self.on_new_event = Box::new(c);
+    }
+
+    pub fn set_on_create_participant_callback(&mut self, c: impl FnMut(u64) + 'a) {
+        self.on_new_participant = Box::new(c);
+    }
+
+    pub fn wait_on_new_event(&mut self) -> Result<(), String> {
+        loop {
+            //Check which was the last event
+            let last_event_id = self.coordinator.get_last_event_id();
+
+            let ret = self.wait_on_event(crate::BUILTIN_EVENT_NEW_EVENT);
+            if ret.is_err() {
+                //Spurious wake up
+                continue;
+            }
+            let current_event_id = self.coordinator.get_last_event_id();
+            if current_event_id != last_event_id {
+                if current_event_id.is_none() {
+                    continue;
+                }
+                //Check if the event was triggered by the subscriber itself
+                let event = self
+                    .coordinator
+                    .get_participant_id_by_event_id(current_event_id.unwrap());
+                match event {
+                    Some(id) => {
+                        if id == self.id {
+                            continue;
+                        }
+                    }
+                    None => {
+                        continue;
+                    }
+                }
+                self.on_new_event.as_mut()(current_event_id.unwrap());
+                break;
+            }
+        }
+
+        Ok(())
+    }
+
+    pub fn wait_on_new_participant(&mut self) -> Result<(), String> {
+        loop {
+            //Check which was the last event
+            let last_participant_id = self.coordinator.get_last_participant_id();
+
+            let ret = self.wait_on_event(crate::BUILTIN_EVENT_NEW_PARTICIPANT);
+            if ret.is_err() {
+                //Spurious wake up
+                continue;
+            }
+            let current_participant_id = self.coordinator.get_last_participant_id();
+            if current_participant_id != last_participant_id {
+                if current_participant_id.is_none() {
+                    continue;
+                }
+                //Check if the event was triggered by the subscriber itself
+                let id = current_participant_id.unwrap();
+                if id == self.id {
+                    continue;
+                }
+                self.on_new_participant.as_mut()(id);
+                break;
+            }
+        }
         Ok(())
     }
 
