@@ -1,6 +1,8 @@
 use crate::event::Event;
 use rufutex::rufutex::SharedFutex;
 use rushm::posixaccessor;
+use std::fs;
+use std::path::Path;
 
 use crate::MAX_EVENTS;
 use crate::MAX_PARTICIPANTS;
@@ -50,6 +52,23 @@ impl Directory {
                 name: [0; MAX_PARTICIPANT_NAME_SIZE],
             }; MAX_PARTICIPANTS],
             events: [Event::new(); MAX_EVENTS],
+        }
+    }
+}
+
+fn clean_shared_files(path: &str, mem_path: &str) {
+    // First unlink all the files under /dev/shm/
+    let shm_path = Path::new(path);
+    if let Ok(entries) = fs::read_dir(shm_path) {
+        for entry in entries {
+            if let Ok(entry) = entry {
+                if let Ok(file_name) = entry.file_name().into_string() {
+                    if file_name.contains(mem_path) {
+                        let file_path = shm_path.join(file_name);
+                        let _ = fs::remove_file(file_path);
+                    }
+                }
+            }
         }
     }
 }
@@ -109,6 +128,12 @@ impl Coordinator {
             ),
             mutex: shared_futex,
         }
+    }
+
+    pub fn new_clean(mem_path: &str) -> Self {
+        clean_shared_files("/dev/shm", mem_path);
+
+        Coordinator::new(mem_path)
     }
 
     pub fn open_existing(mem_path: &str) -> Self {

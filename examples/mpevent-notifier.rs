@@ -1,7 +1,5 @@
 use mpevent::coordinator::Coordinator;
 
-use mpevent::subscriber::Subscriber;
-
 fn main() {
     let mut coordinator = Coordinator::new("example1");
     coordinator.add_participant("test_participant2").unwrap();

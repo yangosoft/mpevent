@@ -89,6 +89,27 @@ impl Subscriber {
         Ok(())
     }
 
+    pub fn wait_on_event_timeout(
+        &mut self,
+        event_name: &str,
+        timeout: std::time::Duration,
+    ) -> Result<(), String> {
+        let ret = self.get_or_create_event(event_name);
+        if ret.is_err() {
+            return Err(String::from("Error getting or creating event"));
+        }
+        let timeout_spec = libc::timespec {
+            tv_sec: timeout.as_secs() as i64,
+            tv_nsec: timeout.subsec_nanos() as i64,
+        };
+
+        let event: &mut rufutex::rufutex::SharedFutex = ret.unwrap();
+        event.wait_with_timeout(0, timeout_spec);
+        event.set_futex_value(0);
+
+        Ok(())
+    }
+
     pub fn close(&mut self) -> Result<(), String> {
         self.coordinator.close(true)
     }

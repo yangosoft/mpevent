@@ -13,22 +13,22 @@ fn wait_on_event(event_name: &str) {
     println!("Event {} received", event_name);
 }
 
-static atom_must_run: AtomicBool = AtomicBool::new(true);
-
 fn main() {
-    let mut coordinator = Coordinator::new("example1");
+    static MUST_RUN: AtomicBool = AtomicBool::new(true);
+
+    let mut coordinator = Coordinator::new_clean("example1");
     coordinator.add_participant("test_participant").unwrap();
 
     let mut waitable = coordinator.add_event("test_event").unwrap();
 
-    let must_run = Arc::new(&atom_must_run).clone();
+    let must_run = Arc::new(&MUST_RUN).clone();
     // spawn a thread to wait on the futex
     let handle = std::thread::spawn(move || {
         wait_on_event("test_event");
         must_run.store(false, std::sync::atomic::Ordering::SeqCst);
     });
 
-    let must_run = Arc::new(&atom_must_run).clone();
+    let must_run = Arc::new(&MUST_RUN).clone();
     let handle2 = std::thread::spawn(move || {
         let mut sub = Subscriber::new("test_subscriber", "example1");
 
@@ -39,7 +39,7 @@ fn main() {
         }
     });
 
-    let must_run = Arc::new(&atom_must_run).clone();
+    let must_run = Arc::new(&MUST_RUN).clone();
     let handle3 = std::thread::spawn(move || {
         let mut sub = Subscriber::new("test_subscriber", "example1");
 
@@ -49,7 +49,12 @@ fn main() {
         }
     });
 
-    waitable.wait(0);
+    let wait_time = libc::timespec {
+        tv_sec: 5,
+        tv_nsec: 0,
+    };
+
+    waitable.wait_with_timeout(0, wait_time);
     waitable.set_futex_value(0);
     println!("Event received");
     handle.join().unwrap();
