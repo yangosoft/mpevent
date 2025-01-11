@@ -418,7 +418,7 @@ fn test_shared_memory_write_read() {
 fn test_events() {
     let mut coordinator = Coordinator::new("test_events");
     let mut coordinator2 = Coordinator::open_existing("test_events");
-    let mut participant_id = coordinator
+    let participant_id = coordinator
         .add_participant("test_shared_memory_participant")
         .unwrap();
     let ret = coordinator.add_event(participant_id, "test_event");
