@@ -49,11 +49,13 @@ impl Event {
         if name.is_empty() {
             return None;
         }
-
+        println!("* Creating shared futex for {}", name);
         let mut shm = POSIXShm::<i64>::new(name.to_string(), std::mem::size_of::<i64>());
         unsafe {
             let ret = shm.open();
             if ret.is_err() {
+                println!("Failed to open shared memory");
+                panic!("Failed to open shared memory");
                 return None;
             }
         }
