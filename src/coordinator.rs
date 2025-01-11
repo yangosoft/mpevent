@@ -372,10 +372,6 @@ impl Coordinator {
         Some(current_id - 1)
     }
 
-    pub fn get_num_participants(&self) -> u64 {
-        unsafe { (*self.directory).last_participant_id }
-    }
-
     pub fn get_participant_id_by_event_id(&self, event_id: u64) -> Option<u64> {
         if event_id > MAX_EVENTS as u64 {
             return None;
@@ -393,8 +389,8 @@ use std::ffi::CString;
 
 #[test]
 fn test_shared_memory_write_read() {
-    let mut coordinator = Coordinator::new("test_shared_memory_coordinator");
-    let mut coordinator2 = Coordinator::open_existing("test_shared_memory_coordinator");
+    let mut coordinator = Coordinator::new("test_shared_memory_write_read");
+    let mut coordinator2 = Coordinator::open_existing("test_shared_memory_write_read");
 
     let ret = coordinator.add_participant("test_participant");
     assert!(ret.is_ok());
@@ -420,18 +416,20 @@ fn test_shared_memory_write_read() {
 
 #[test]
 fn test_events() {
-    let mut coordinator = Coordinator::new("test_shared_memory_coordinator");
-    let mut coordinator2 = Coordinator::open_existing("test_shared_memory_coordinator");
-
-    let ret = coordinator.add_event("test_event");
+    let mut coordinator = Coordinator::new("test_events");
+    let mut coordinator2 = Coordinator::open_existing("test_events");
+    let mut participant_id = coordinator
+        .add_participant("test_shared_memory_participant")
+        .unwrap();
+    let ret = coordinator.add_event(participant_id, "test_event");
     assert!(ret.is_ok());
     let num_events = coordinator2.get_number_of_events();
     assert_eq!(num_events, 1);
-    let ret = coordinator2.add_event("test_event");
+    let ret = coordinator2.add_event(participant_id, "test_event");
     assert!(ret.is_ok());
     let num_events = coordinator2.get_number_of_events();
     assert_eq!(num_events, 1);
-    let ret = coordinator2.add_event("test_event");
+    let ret = coordinator2.add_event(participant_id, "test_event");
     assert!(ret.is_ok());
     let num_events = coordinator2.get_number_of_events();
     assert_eq!(num_events, 1);
