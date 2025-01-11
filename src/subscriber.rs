@@ -205,7 +205,7 @@ impl<'a> Subscriber<'a> {
         loop {
             debug!("Waiting on new participant...");
             //Check which was the last event
-            let last_participant_id = self.coordinator.get_num_participants();
+            let last_participant_id = self.coordinator.get_number_of_participants();
             debug!(
                 "Last participant id before waiting: {:?}",
                 last_participant_id
@@ -218,7 +218,7 @@ impl<'a> Subscriber<'a> {
                 continue;
             }
 
-            let current_participant_id = self.coordinator.get_num_participants();
+            let current_participant_id = self.coordinator.get_number_of_participants();
             debug!(
                 "New participant event received. Checking last participant id: {:?}",
                 current_participant_id
