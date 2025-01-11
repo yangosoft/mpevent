@@ -1,5 +1,6 @@
 use crate::coordinator::Coordinator;
 use crate::event::Event;
+use log::debug;
 use std::collections::HashMap;
 
 pub struct Subscriber<'a> {
@@ -52,7 +53,7 @@ impl<'a> Subscriber<'a> {
         event_name: &str,
     ) -> Result<&mut rufutex::rufutex::SharedFutex, String> {
         if self.map_events.contains_key(event_name) {
-            println!("Event {} already exists in shared memory", event_name);
+            debug!("Event {} already exists in shared memory", event_name);
             let ev = self.map_events.get_mut(event_name).unwrap();
             return Ok(ev);
         }
@@ -63,7 +64,7 @@ impl<'a> Subscriber<'a> {
         }
         let event = ret.unwrap();
         self.map_events.insert(event_name.to_string(), event);
-        println!("Event {} created in shared memory", event_name);
+        debug!("Event {} created in shared memory", event_name);
         Ok(self.map_events.get_mut(event_name).unwrap())
     }
 
@@ -85,7 +86,7 @@ impl<'a> Subscriber<'a> {
     }
 
     pub fn wait_on_internal_event(&mut self, event_name: &str) -> Result<(), String> {
-        println!("Waiting on internal event {}", event_name);
+        debug!("Waiting on internal event {}", event_name);
         let event_name = self.get_coordinator().get_path() + "_" + event_name;
         let mut event = Event::new();
         event.set_name(&event_name).unwrap();
@@ -97,7 +98,7 @@ impl<'a> Subscriber<'a> {
         shared_futex.wait(0);
         let v = shared_futex.get_futex_value();
         if v == 0 {
-            println!("Spurious wake up");
+            debug!("Spurious wake up");
             //It was spurious wake up
             return Err(String::from("Error waiting on event"));
         }
@@ -106,14 +107,14 @@ impl<'a> Subscriber<'a> {
     }
 
     pub fn wait_on_event(&mut self, event_name: &str) -> Result<(), String> {
-        println!("Waiting on event {}", event_name);
+        debug!("Waiting on event {}", event_name);
         let ret = self.get_or_create_event(event_name);
         if ret.is_err() {
             return Err(String::from("Error getting or creating event"));
         }
 
         let event: &mut rufutex::rufutex::SharedFutex = ret.unwrap();
-        println!(
+        debug!(
             " |-> Waiting on event {} with value {}",
             event_name,
             event.get_futex_value()
@@ -166,13 +167,13 @@ impl<'a> Subscriber<'a> {
             let ret = self.wait_on_event(crate::BUILTIN_EVENT_NEW_EVENT);
             if ret.is_err() {
                 //Spurious wake up
-                println!("Spurious wake up");
+                debug!("Spurious wake up");
                 continue;
             }
             let current_event_id = self.coordinator.get_last_event_id();
             if current_event_id != last_event_id {
                 if current_event_id.is_none() {
-                    println!("No event yet");
+                    debug!("No event yet");
                     continue;
                 }
                 //Check if the event was triggered by the subscriber itself
@@ -181,9 +182,9 @@ impl<'a> Subscriber<'a> {
                     .get_participant_id_by_event_id(current_event_id.unwrap());
                 match event {
                     Some(id) => {
-                        println!("Event triggered by participant {}", id);
+                        debug!("Event triggered by participant {}", id);
                         if id == self.id {
-                            println!("Event triggered by me. Ignoring");
+                            debug!("Event triggered by me. Ignoring");
                             continue;
                         }
                     }
@@ -191,7 +192,7 @@ impl<'a> Subscriber<'a> {
                         continue;
                     }
                 }
-                println!("Event triggered by other participant");
+                debug!("Event triggered by other participant");
                 self.on_new_event.as_mut()(current_event_id.unwrap());
                 break;
             }
@@ -202,39 +203,39 @@ impl<'a> Subscriber<'a> {
 
     pub fn wait_on_new_participant(&mut self) -> Result<(), String> {
         loop {
-            println!("Waiting on new participant...");
+            debug!("Waiting on new participant...");
             //Check which was the last event
             let last_participant_id = self.coordinator.get_num_participants();
-            println!(
+            debug!(
                 "Last participant id before waiting: {:?}",
                 last_participant_id
             );
 
             let ret = self.wait_on_internal_event(crate::BUILTIN_EVENT_NEW_PARTICIPANT);
             if ret.is_err() {
-                println!("Spurious wake up");
+                debug!("Spurious wake up");
                 //Spurious wake up
                 continue;
             }
 
             let current_participant_id = self.coordinator.get_num_participants();
-            println!(
+            debug!(
                 "New participant event received. Checking last participant id: {:?}",
                 current_participant_id
             );
 
             if current_participant_id != last_participant_id {
                 if current_participant_id == 0 {
-                    println!("No participant yet");
+                    debug!("No participant yet");
                     continue;
                 }
                 //Check if the event was triggered by the subscriber itself
                 let id = current_participant_id;
                 if id == self.id {
-                    println!("Participant triggered by me. Ignoring");
+                    debug!("Participant triggered by me. Ignoring");
                     continue;
                 }
-                println!("Participant triggered by other participant");
+                debug!("Participant triggered by other participant");
                 self.on_new_participant.as_mut()(id);
                 break;
             }

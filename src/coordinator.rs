@@ -1,6 +1,8 @@
 use crate::event::Event;
+use log::{debug, error};
 use rufutex::rufutex::SharedFutex;
 use rushm::posixaccessor;
+
 use std::fs;
 use std::path::Path;
 
@@ -95,11 +97,13 @@ impl Coordinator {
         }
 
         if ret.is_err() {
+            error!("Error opening shared memory");
             panic!("Error opening shared memory");
         }
 
         let ptr_data: *mut Directory = tmp_shm.get_as_mut();
         if ptr_data.is_null() {
+            error!("Error getting pointer to shared memory");
             panic!("Error getting pointer to shared memory");
         }
 
@@ -114,6 +118,7 @@ impl Coordinator {
         unsafe {
             let ret = shm_mutex.open();
             if ret.is_err() {
+                error!("Error opening shared memory for mutex");
                 panic!("Error opening shared memory for mutex");
             }
         }
@@ -209,7 +214,7 @@ impl Coordinator {
 
     fn notify_builtin(&mut self, event_name: &str) -> Result<(), String> {
         let event_name = self.mem_path.to_string() + "_" + event_name;
-        println!("   |-> Notifying builtin event. {}", event_name);
+        debug!("   |-> Notifying builtin event. {}", event_name);
         let mut event = Event::new();
 
         let ret = event.set_name(event_name.as_str());
@@ -223,7 +228,7 @@ impl Coordinator {
             return Err(String::from("Error creating waitable"));
         }
         let mut waitable = waitable.unwrap();
-        println!(
+        debug!(
             "   |-> Notifying builtin event {}. Old value {}",
             event_name,
             waitable.get_futex_value()
@@ -236,13 +241,14 @@ impl Coordinator {
     }
 
     pub fn add_participant(&mut self, name: &str) -> Result<u64, String> {
-        println!("Creating new participant '{}'", name);
+        debug!("Creating new participant '{}'", name);
         let mut participant = Participant::new();
         self.mutex.lock();
 
         let max_id = unsafe { (*self.directory).last_participant_id };
         if max_id >= MAX_PARTICIPANTS as u64 {
             self.mutex.unlock(1);
+            log::error!("Max number of participants reached");
             return Err(String::from("Max number of participants reached"));
         }
 
@@ -252,6 +258,7 @@ impl Coordinator {
             let p_name = p.get_name();
             if p_name == name {
                 self.mutex.unlock(1);
+                log::error!("Participant already exists");
                 return Err(String::from("Participant already exists"));
             }
         }
@@ -264,7 +271,7 @@ impl Coordinator {
             }
             (*self.directory).participants[participant.id as usize] = participant;
             (*self.directory).last_participant_id += 1;
-            println!(
+            debug!(
                 " |-> Participant created with id {}. Next id: {}",
                 participant.id,
                 (*self.directory).last_participant_id
@@ -273,7 +280,7 @@ impl Coordinator {
         self.mutex.unlock(1);
 
         // Notify with internal event
-        println!(" |-> Notifying new participant");
+        debug!(" |-> Notifying new participant");
         let _ = self.notify_builtin(BUILTIN_EVENT_NEW_PARTICIPANT);
 
         Ok(participant.id)
@@ -291,7 +298,7 @@ impl Coordinator {
 
         // Prepend coordinator name to event name
         let name = self.mem_path.to_string() + "_" + name;
-        println!("|-> Creating new event '{}'", name);
+        debug!("|-> Creating new event '{}'", name);
 
         let mut exists = false;
         // Check if event already exists
