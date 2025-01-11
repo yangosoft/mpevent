@@ -3,6 +3,8 @@ use crate::MAX_EVENT_NAME_SIZE;
 use rufutex::rufutex::SharedFutex;
 use rushm::posixaccessor::POSIXShm;
 
+use log::debug;
+
 // C representation
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
@@ -49,12 +51,12 @@ impl Event {
         if name.is_empty() {
             return None;
         }
-
+        debug!("* Creating shared futex for {}", name);
         let mut shm = POSIXShm::<i64>::new(name.to_string(), std::mem::size_of::<i64>());
         unsafe {
             let ret = shm.open();
             if ret.is_err() {
-                return None;
+                panic!("Failed to open shared memory");
             }
         }
         let ptr_shm = shm.get_cptr_mut();
@@ -120,21 +122,21 @@ fn test_events() {
         assert!(shared_futex2.is_some());
 
         let mut shared_futex2 = shared_futex2.unwrap();
-        println!("Waiting on futex for 42");
+        debug!("Waiting on futex for 42");
         shared_futex2.wait(42);
-        println!("Posting on futex for 1");
+        debug!("Posting on futex for 1");
         shared_futex2.post_with_value(1, 32);
     });
 
     //Sleep for a while to let the thread start
     std::thread::sleep(std::time::Duration::from_millis(300));
 
-    println!("Posting on futex for 42");
+    debug!("Posting on futex for 42");
     shared_futex.post_with_value(42, 32);
-    println!("Waiting on futex for 1");
+    debug!("Waiting on futex for 1");
     shared_futex.wait(1);
-    println!("Wakeup on futex from 1");
-    println!("Posting on futex for 42");
+    debug!("Wakeup on futex from 1");
+    debug!("Posting on futex for 42");
     shared_futex.post_with_value(42, 32);
 
     handle.join().unwrap();
