@@ -20,4 +20,8 @@ fn main() {
     publisher
         .trigger_event("test_event", std::u32::MAX)
         .unwrap();
+
+    let _ = coordinator
+        .add_event(participant_id, "test_event2")
+        .unwrap();
 }
