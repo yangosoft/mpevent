@@ -8,4 +8,4 @@ pub const BUILTIN_EVENT_NEW_EVENT: &str = "mpevent_new_event";
 
 pub mod coordinator;
 pub mod event;
-pub mod subscriber;
+pub mod participant;

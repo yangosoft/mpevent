@@ -3,7 +3,7 @@ use crate::event::Event;
 use log::debug;
 use std::collections::HashMap;
 
-pub struct Subscriber<'a> {
+pub struct Participant<'a> {
     id: u64,
     name: String,
     coordinator: Coordinator,
@@ -12,7 +12,7 @@ pub struct Subscriber<'a> {
     on_new_participant: Box<dyn FnMut(u64) + 'a>,
 }
 
-impl<'a> Subscriber<'a> {
+impl<'a> Participant<'a> {
     pub fn new(name: &str, mem_path: &str) -> Self {
         let mut coordinator = Coordinator::new(mem_path);
         let ret = coordinator.add_participant(name);
@@ -22,7 +22,7 @@ impl<'a> Subscriber<'a> {
 
         let map_events = HashMap::new();
 
-        Subscriber {
+        Participant {
             id: ret.unwrap(),
             name: name.to_string(),
             coordinator,
@@ -251,13 +251,13 @@ impl<'a> Subscriber<'a> {
 #[cfg(test)]
 #[test]
 fn test_subscriber() {
-    let mut subscriber = Subscriber::new("test_subscriber", "test_mem_path");
+    let mut subscriber = Participant::new("test_subscriber", "test_mem_path");
     assert_eq!(subscriber.get_id(), 0);
     assert_eq!(subscriber.get_name(), "test_subscriber");
 
     // spawn a thread to wait on the futex
     let handle = std::thread::spawn(move || {
-        let mut subscriber = Subscriber::new("test_subscriber2", "test_mem_path");
+        let mut subscriber = Participant::new("test_subscriber2", "test_mem_path");
         assert_eq!(subscriber.get_id(), 0);
         assert_eq!(subscriber.get_name(), "test_subscriber2");
         let ret = subscriber.wait_on_event("test_subscribers");

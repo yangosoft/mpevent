@@ -5,7 +5,7 @@
 // The subscriber is notified when a new event is posted.
 
 use mpevent::coordinator::Coordinator;
-use mpevent::subscriber::Subscriber;
+use mpevent::participant::Participant;
 
 fn main() {
     let mut coordinator = Coordinator::open_existing("example1");
@@ -16,7 +16,7 @@ fn main() {
 
     println!("Event test_event posted");
 
-    let mut publisher = Subscriber::new("test_notifier", "example1");
+    let mut publisher = Participant::new("test_notifier", "example1");
     publisher
         .trigger_event("test_event", std::u32::MAX)
         .unwrap();

@@ -1,12 +1,12 @@
 use mpevent::coordinator::Coordinator;
-use mpevent::subscriber::Subscriber;
+use mpevent::participant::Participant;
 
 fn main() {
     let mut coordinator = Coordinator::new_clean("example1");
     let fixed_participant_id = coordinator.add_participant("test_participant").unwrap();
 
     let handle = std::thread::spawn(move || {
-        let mut sub = Subscriber::new("test_subscriber", "example1");
+        let mut sub = Participant::new("test_subscriber", "example1");
 
         sub.set_on_create_participant_callback(move |participant_id: u64| {
             println!(
@@ -20,7 +20,7 @@ fn main() {
     });
 
     let handle2 = std::thread::spawn(move || {
-        let mut sub = Subscriber::new("test_subscriber", "example1");
+        let mut sub = Participant::new("test_subscriber", "example1");
 
         sub.set_on_create_event_callback(move |event_id: u64| {
             println!(" ######## New event id {} created and is not me!", event_id);
